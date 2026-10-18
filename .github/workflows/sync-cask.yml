@@ -31,11 +31,13 @@ jobs:
 
       - name: Xác định tag mục tiêu
         id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [ -n "${{ github.event.inputs.tag }}" ]; then
             echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
           else
-            TAG=$(curl -sf https://api.github.com/repos/hunglinhpt/TextVN/releases/latest | jq -r .tag_name)
+            TAG=$(curl -sf -H "Authorization: Bearer $GH_TOKEN"               https://api.github.com/repos/hunglinhpt/TextVN/releases/latest | jq -r .tag_name)
             [ "$TAG" != "null" ] && [ -n "$TAG" ] || { echo "không lấy được release mới nhất"; exit 1; }
             echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           fi
