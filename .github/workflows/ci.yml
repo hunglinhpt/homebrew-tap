@@ -1,0 +1,30 @@
+# ci.yml — kiểm cask trên mỗi push: cú pháp Ruby + các stanza bắt buộc.
+# Homebrew sẽ audit sâu hơn khi người dùng cài; gate này chặn lỗi cú pháp
+# làm hỏng cài đặt ngay lập tức.
+name: CI
+
+on:
+  push:
+    paths: ["Casks/**", ".github/workflows/**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cú pháp Ruby
+        run: ruby -c Casks/textvn.rb
+      - name: Stanza bắt buộc + định dạng sha256
+        run: |
+          ruby -e '
+            src = File.read("Casks/textvn.rb")
+            %w[cask "textvn" version sha256 url name desc homepage
+               input_method app caveats zap].each do |s|
+              abort "thiếu stanza/khoá #{s}" unless src.include?(s)
+            end
+            abort "sha256 phải là 64 ký tự hex" unless src.match?(/sha256 "[0-9a-f]{64}"/)
+            abort "url phải trỏ GitHub Release của TextVN" unless src.include?("github.com/hunglinhpt/TextVN/releases/download/")
+            puts "OK"
+          '

@@ -1,0 +1,86 @@
+# sync-cask.yml — tự cập nhật Casks/textvn.rb theo release mới nhất của
+# hunglinhpt/TextVN. Không cần PAT: chạy bằng GITHUB_TOKEN trong chính repo
+# tap này (mỗi 6 giờ hoặc chạy tay). Chỉ ghi khi version/hash ĐỔI THẬT, và
+# chỉ tin hash sau khi verify chữ ký GPG của SHA256SUMS.txt (không tự tính
+# hash — nguồn sự thật là bản đã ký).
+name: Sync cask
+
+on:
+  schedule:
+    - cron: "7 */6 * * *" # mỗi 6 giờ (phút lệch để tránh đỉnh API)
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag TextVN cụ thể (bỏ trống = release mới nhất)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-cask
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tap
+        uses: actions/checkout@v4
+
+      - name: Xác định tag mục tiêu
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            TAG=$(curl -sf https://api.github.com/repos/hunglinhpt/TextVN/releases/latest | jq -r .tag_name)
+            [ "$TAG" != "null" ] && [ -n "$TAG" ] || { echo "không lấy được release mới nhất"; exit 1; }
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Tải + verify SHA256SUMS.txt (clearsign GPG)
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          BASE="https://github.com/hunglinhpt/TextVN/releases/download/$TAG"
+          curl -sfL "$BASE/SHA256SUMS.txt" -o SHA256SUMS.txt
+          curl -sfL "$BASE/gpg-release-key.asc" -o gpg-release-key.asc
+          gpg --import gpg-release-key.asc
+          gpg --verify SHA256SUMS.txt
+
+      - name: Ghi version + sha256 vào Casks/textvn.rb
+        id: cask
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          VERSION="${TAG#v}"
+          HASH=$(gpg --decrypt SHA256SUMS.txt | grep "TextVN-macos-universal-v${VERSION}.zip" | cut -d' ' -f1)
+          [ -n "$HASH" ] || { echo "SHA256SUMS không có mac zip của $VERSION"; exit 1; }
+          CUR_VER=$(sed -n 's/^  version "\(.*\)"$/\1/p' Casks/textvn.rb)
+          CUR_SHA=$(sed -n 's/^  sha256 "\(.*\)"$/\1/p' Casks/textvn.rb)
+          if [ "$CUR_VER" = "$VERSION" ] && [ "$CUR_SHA" = "$HASH" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "cask đã khớp ($VERSION) — không commit"
+          else
+            sed -i "s/^  version \".*\"$/  version \"$VERSION\"/" Casks/textvn.rb
+            sed -i "s/^  sha256 \".*\"$/  sha256 \"$HASH\"/" Casks/textvn.rb
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "cập nhật cask: $CUR_VER → $VERSION ($HASH)"
+          fi
+
+      - name: Ruby syntax check
+        if: steps.cask.outputs.changed == 'true'
+        run: ruby -c Casks/textvn.rb
+
+      - name: Commit + push
+        if: steps.cask.outputs.changed == 'true'
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          git config user.name "textvn-tap-bot"
+          git config user.email "hunglinhpt@users.noreply.github.com"
+          git add Casks/textvn.rb
+          git commit -m "cask: bump textvn $TAG (sha256 từ SHA256SUMS đã verify GPG)"
+          git push
