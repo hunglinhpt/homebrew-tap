@@ -37,7 +37,9 @@ jobs:
           if [ -n "${{ github.event.inputs.tag }}" ]; then
             echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
           else
-            TAG=$(curl -sf -H "Authorization: Bearer $GH_TOKEN"               https://api.github.com/repos/hunglinhpt/TextVN/releases/latest | jq -r .tag_name)
+            # Release của TextVN luôn là pre-release ("release candidate") nên
+            # /releases/latest trả 404 — lấy phần tử đầu của /releases?per_page=1.
+            TAG=$(curl -sf -H "Authorization: Bearer $GH_TOKEN"               "https://api.github.com/repos/hunglinhpt/TextVN/releases?per_page=1" | jq -r '.[0].tag_name')
             [ "$TAG" != "null" ] && [ -n "$TAG" ] || { echo "không lấy được release mới nhất"; exit 1; }
             echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           fi
