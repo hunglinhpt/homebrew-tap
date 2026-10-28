@@ -6,8 +6,8 @@
 # mỗi 6 giờ / chạy tay; hash lấy từ bản đã verify chữ ký GPG, không tự tính).
 # File bản mẫu trong repo chính: packaging/homebrew/textvn.rb (B7b).
 cask "textvn" do
-  version "0.2.50"
-  sha256 "a40c272d64f82ac380adf4721cfa52b11cc9dd67bb2ab679d05a5cbda2780786"
+  version "0.2.51"
+  sha256 "134481f7ef40e73f54b97c70eb51611b828f590c6d177d78ce78272ba034ad77"
 
   url "https://github.com/hunglinhpt/TextVN/releases/download/v#{version}/TextVN-macos-universal-v#{version}.zip"
   name "TextVN"
